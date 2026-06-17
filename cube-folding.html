@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>正方体展开图 (ES5/最终版)</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #2c3e50;
+            font-family: "Microsoft YaHei", sans-serif;
+            touch-action: none;
+        }
+
+        canvas {
+            touch-action: none;
+        }
+
+        #panel {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            width: 280px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            user-select: none;
+            z-index: 100;
+        }
+
+        h2 {
+            margin: 0 0 15px 0;
+            font-size: 18px;
+            color: #34495e;
+            text-align: center;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            font-size: 13px;
+            font-weight: bold;
+            color: #7f8c8d;
+            margin-bottom: 5px;
+        }
+
+        select {
+            width: 100%;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid #bdc3c7;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .btn-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        button {
+            padding: 10px;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 14px;
+            transition: 0.2s;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            filter: grayscale(1);
+        }
+
+        #btnReset {
+            background: #95a5a6;
+            color: white;
+        }
+
+        #btnUnfold {
+            background: #3498db;
+            color: white;
+        }
+
+        #instruction {
+            margin-top: 15px;
+            padding: 10px;
+            background: #ecf0f1;
+            border-left: 4px solid #e74c3c;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #2c3e50;
+        }
+
+        .highlight-text {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+
+        .legend {
+            font-size: 11px;
+            color: #7f8c8d;
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        /* Toast 提示样式 */
+        #toast {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(231, 76, 60, 0.95);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        #toast.show {
+            opacity: 1;
+        }
+    </style>
+
+    <!-- 引入 Three.js 和 OrbitControls (本地模式) -->
+    <script src="js/three.min.js"></script>
+    <script src="js/OrbitControls.js"></script>
+</head>
+
+<body>
+
+    <div id="toast"></div>
+
+    <div id="panel">
+        <h2>🎲 正方体折叠工坊</h2>
+        <div class="control-group">
+            <label>1. 选择展开图形态</label>
+            <select id="shapeSelect">
+                <optgroup label="1-4-1 型（共6种）">
+                    <option value="0" selected>1-4-1 (上2下2)</option>
+                    <option value="1">1-4-1 (上2下3)</option>
+                    <option value="14">1-4-1 (上1下1)</option>
+                    <option value="4">1-4-1 (上1下2)</option>
+                    <option value="15">1-4-1 (上1下3)</option>
+                    <option value="16">1-4-1 (上1下4)</option>
+                </optgroup>
+                <optgroup label="2-3-1 型">
+                    <option value="6">2-3-1 (标准)</option>
+                    <option value="7">2-3-1 (T字变种)</option>
+                    <option value="8">2-3-1 (错位)</option>
+                </optgroup>
+                <optgroup label="特殊型">
+                    <option value="9">2-2-2 (阶梯)</option>
+                    <option value="10">3-3 (两排)</option>
+                </optgroup>
+                <optgroup label="❌ 错误案例">
+                    <option value="11">1-2-3型 (1、2都靠右)</option>
+                    <option value="12">1-1-4型 (1、1靠右)</option>
+                    <option value="13">2-3-1型 (2分布左和右，1在中间)</option>
+                </optgroup>
+            </select>
+        </div>
+        <div id="instruction">当前状态：<span id="stepText" class="highlight-text">请在右侧点击一个面作为“下”</span></div>
+        <div class="btn-grid">
+
+            <button id="btnUnfold" disabled>📂 还原展开</button>
+            <button id="btnReset">🔄 重置场景</button>
+        </div>
+        <div style="margin-top: 10px;">
+            <button id="btnFixError" style="display: none; width: 100%; padding: 10px; border: none; border-radius: 6px; background: #27ae60; color: white; font-weight: bold; cursor: pointer; font-size: 14px; transition: 0.2s; position: relative; z-index: 101;">改错</button>
+        </div>
+        <div class="legend">左键旋转 · 右键平移 · 滚轮缩放<br>触摸屏：单指旋转 · 双指缩放</div>
+    </div>
+
+    <script>
+        // ================= 兼容性处理 =================
+
+        // requestAnimationFrame 兼容性处理
+        (function () {
+            var lastTime = 0;
+            var vendors = ['webkit', 'moz', 'ms', 'o'];
+            for (var x = 0; x < vendors.length && !window.requestAnimationFrame; ++x) {
+                window.requestAnimationFrame = window[vendors[x] + 'RequestAnimationFrame'];
+                window.cancelAnimationFrame = window[vendors[x] + 'CancelAnimationFrame'] ||
+                    window[vendors[x] + 'CancelRequestAnimationFrame'];
+            }
+            if (!window.requestAnimationFrame) {
+                window.requestAnimationFrame = function (callback) {
+                    var currTime = new Date().getTime();
+                    var timeToCall = Math.max(0, 16 - (currTime - lastTime));
+                    var id = window.setTimeout(function () { callback(currTime + timeToCall); }, timeToCall);
+                    lastTime = currTime + timeToCall;
+                    return id;
+                };
+            }
+            if (!window.cancelAnimationFrame) {
+                window.cancelAnimationFrame = function (id) {
+                    clearTimeout(id);
+                };
+            }
+        }());
+
+        // ================= 全局变量定义 (ES5) =================
+
+        // 展开图数据定义
+        var NET_SHAPES = [
+            // 1-4-1 型（保留6种本质不同的情况：上方在位置0或1，下方在位置0,1,2,3）
+            [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }, { x: 1, y: 2 }], // 0: (1,1) 标准十字：上下对齐中间
+            [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }, { x: 2, y: 2 }], // 1: (1,2) 上中下右：上居中，下右移1格
+            [{ x: 2, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }, { x: 1, y: 2 }], // 2: (2,1) 已移除（与1上下翻转等价）
+            [{ x: 2, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }, { x: 2, y: 2 }], // 3: (2,2) 已移除（与0左右翻转等价）
+            [{ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }, { x: 1, y: 2 }], // 4: (0,1) 上左下中：上左，下居中
+            [{ x: 3, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }, { x: 0, y: 2 }], // 5: (3,0) 已移除（与16上下翻转等价）
+            // 2-3-1 型
+            [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }, { x: 3, y: 2 }], // 6
+            [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }, { x: 1, y: 2 }], // 7
+            [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }, { x: 2, y: 2 }], // 8
+            [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 2, y: 2 }, { x: 3, y: 2 }], // 9
+            [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }, { x: 2, y: 1 }, { x: 3, y: 1 }, { x: 4, y: 1 }],  // 10
+            // 错误案例
+            [{ x: 3, y: 0 }, { x: 2, y: 1 }, { x: 3, y: 1 }, { x: 1, y: 2 }, { x: 2, y: 2 }, { x: 3, y: 2 }], // 11: 1-2-3型，1、2都靠右
+            [{ x: 3, y: 0 }, { x: 3, y: 1 }, { x: 0, y: 2 }, { x: 1, y: 2 }, { x: 2, y: 2 }, { x: 3, y: 2 }], // 12: 1-1-4型，1、1靠右
+            [{ x: 0, y: 0 }, { x: 2, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 1, y: 2 }], // 13: 2-3-1型，但是2分布左和右，1在中间
+            // 1-4-1 型（补充的情况，保留的6种：上方在0或1位置）
+            [{ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }, { x: 0, y: 2 }], // 14: (0,0) 上下左对齐：上左，下左
+            [{ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }, { x: 2, y: 2 }], // 15: (0,2) 上左下右：上左，下右移1格
+            [{ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }, { x: 3, y: 2 }], // 16: (0,3) 上左下最右：上左，下最右
+            [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }, { x: 0, y: 2 }], // 17: (1,0) 已移除（上方不在0或1位置）
+            [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }, { x: 3, y: 2 }], // 18: (1,3) 已移除（上方不在0或1位置）
+            [{ x: 2, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }, { x: 0, y: 2 }], // 19: (2,0) 已移除（上方不在0或1位置）
+            [{ x: 2, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }, { x: 3, y: 2 }], // 20: (2,3) 已移除（上方不在0或1位置）
+            [{ x: 3, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }, { x: 1, y: 2 }], // 21: (3,1) 已移除（上方不在0或1位置）
+            [{ x: 3, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }, { x: 2, y: 2 }], // 22: (3,2) 已移除（上方不在0或1位置）
+            [{ x: 3, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }, { x: 3, y: 2 }]  // 23: (3,3) 已移除（上方不在0或1位置）
+        ];
+
+        var BOX_SIZE = 2;
+        var scene, camera, renderer, controls, raycaster, mouse;
+        var faceNodes = [];
+        var rootAnchor;
+        var baseFaceId = -1;
+        var foldQueue = [];
+        var foldStepIndex = 0;
+        var isAnimating = false;
+        var animatingFaces = {}; // 记录正在动画中的面（使用对象键值，兼容 ES5）
+        var touchStartPos = null; // 记录触摸开始位置
+        var foldedFaces = {}; // 记录已经折叠的面（使用对象键值，兼容 ES5）
+        var labelShownFaces = {}; // 记录已经显示文字的面（使用对象键值，兼容 ES5）
+        var currentShapeIndex = 0; // 记录当前实际加载的形状索引
+
+        // UI 元素
+        var shapeSelect = document.getElementById('shapeSelect');
+        var btnReset = document.getElementById('btnReset');
+        var btnUnfold = document.getElementById('btnUnfold');
+        var btnFixError = document.getElementById('btnFixError');
+        var stepText = document.getElementById('stepText');
+        var toast = document.getElementById('toast');
+
+        // ================= 辅助函数 =================
+
+        // Toast 提示函数
+        function showToast(message) {
+            toast.textContent = message;
+            toast.classList.add('show');
+            setTimeout(function () {
+                toast.classList.remove('show');
+            }, 2000);
+        }
+
+        // 兼容旧浏览器的 closest 方法
+        function closestElement(el, selector) {
+            if (el.closest) {
+                return el.closest(selector);
+            }
+            // 兼容旧浏览器的实现
+            var matches = el.matches || el.webkitMatchesSelector || el.mozMatchesSelector || el.msMatchesSelector;
+            while (el) {
+                if (matches && matches.call(el, selector)) {
+                    return el;
+                }
+                el = el.parentElement;
+            }
+            return null;
+        }
+
+        // 防止默认触摸行为
+        function preventDefault(e) {
+            // 如果触摸点在面板上，不阻止默认行为
+            var target = e.target || e.srcElement;
+            if (closestElement(target, '#panel')) {
+                return;
+            }
+            e.preventDefault();
+        }
+
+        // ================= 初始化 =================
+        init();
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x333333);
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(0, 16, 12);
+            camera.lookAt(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+            var dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(5, 20, 10);
+            dirLight.castShadow = true;
+            scene.add(dirLight);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            // OrbitControls 默认支持触摸操作
+
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            window.addEventListener('resize', onResize);
+            window.addEventListener('click', onClick);
+            // 添加触摸事件支持
+            renderer.domElement.addEventListener('touchstart', onTouchStart, { passive: false });
+            renderer.domElement.addEventListener('touchmove', preventDefault, { passive: false });
+            renderer.domElement.addEventListener('touchend', onTouchEnd, { passive: false });
+
+            loadShape(0);
+            animate();
+        }
+
+        // ================= 辅助函数：创建与绘制 =================
+
+        function createFace(id) {
+            var canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 256;
+            var ctx = canvas.getContext('2d');
+            updateCanvas(ctx, "", false);
+
+            var mesh = new THREE.Mesh(
+                new THREE.PlaneGeometry(BOX_SIZE, BOX_SIZE),
+                new THREE.MeshStandardMaterial({
+                    map: new THREE.CanvasTexture(canvas),
+                    roughness: 0.4,
+                    side: THREE.DoubleSide
+                })
+            );
+            mesh.rotation.x = -Math.PI / 2;
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.userData = { id: id };
+
+            return { mesh: mesh, ctx: ctx, texture: mesh.material.map };
+        }
+
+        function updateCanvas(ctx, text, isBase) {
+            // 简单绘制，不进行动态旋转计算
+            ctx.fillStyle = isBase ? "#3498db" : "#ecf0f1";
+            ctx.fillRect(0, 0, 256, 256);
+            ctx.strokeStyle = "#2c3e50"; ctx.lineWidth = 10;
+            ctx.strokeRect(0, 0, 256, 256);
+
+            if (text) {
+                ctx.fillStyle = isBase ? "#fff" : "#e74c3c";
+                ctx.font = "bold 100px 'Microsoft YaHei'";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText(text, 128, 128);
+            }
+        }
+
+        // ================= 核心逻辑：加载与构建 =================
+
+        function loadShape(idx) {
+            if (rootAnchor) scene.remove(rootAnchor);
+            rootAnchor = new THREE.Group();
+            scene.add(rootAnchor);
+
+            faceNodes = [];
+            baseFaceId = -1;
+            foldQueue = [];
+            foldStepIndex = 0;
+            foldedFaces = {}; // 重置已折叠面的记录
+            animatingFaces = {}; // 重置动画中的面记录
+            labelShownFaces = {}; // 重置已显示文字的面记录
+            isAnimating = false; // 重置动画状态
+            updateUI('select');
+
+            // 确保idx是数字类型
+            idx = parseInt(idx, 10);
+            
+            // 更新当前形状索引
+            currentShapeIndex = idx;
+            
+            // 显示/隐藏改错按钮（只在1-1-4型错误案例时显示）
+            if (btnFixError) {
+                if (idx === 12) {
+                    btnFixError.style.display = 'block';
+                } else {
+                    btnFixError.style.display = 'none';
+                }
+            }
+            
+            var layout = NET_SHAPES[idx];
+
+            // 计算中心
+            var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            for (var i = 0; i < layout.length; i++) {
+                minX = Math.min(minX, layout[i].x); maxX = Math.max(maxX, layout[i].x);
+                minY = Math.min(minY, layout[i].y); maxY = Math.max(maxY, layout[i].y);
+            }
+            var cx = (minX + maxX) / 2;
+            var cy = (minY + maxY) / 2;
+
+            for (var i = 0; i < layout.length; i++) {
+                var pos = layout[i];
+                var nodeObj = createFace(i);
+
+                var wx = (pos.x - cx) * BOX_SIZE;
+                var wz = (pos.y - cy) * BOX_SIZE;
+
+                nodeObj.mesh.position.set(wx, 0, wz);
+                rootAnchor.add(nodeObj.mesh);
+
+                faceNodes.push({
+                    mesh: nodeObj.mesh,
+                    ctx: nodeObj.ctx,
+                    texture: nodeObj.texture,
+                    id: i,
+                    gridX: pos.x,
+                    gridY: pos.y,
+                    initialPos: new THREE.Vector3(wx, 0, wz),
+                    nodeGroup: null
+                });
+            }
+        }
+
+        function buildHierarchy(rootId) {
+            var rootFace = faceNodes[rootId];
+
+            // 移除所有直属 Mesh
+            while (rootAnchor.children.length > 0) rootAnchor.remove(rootAnchor.children[0]);
+
+            // 视觉稳定：移动 rootGroup 到根面原始位置
+            var rootGroup = new THREE.Group();
+            rootGroup.position.copy(rootFace.initialPos);
+            rootAnchor.add(rootGroup);
+
+            rootFace.mesh.position.set(0, 0, 0);
+            rootFace.mesh.rotation.set(-Math.PI / 2, 0, 0);
+            rootGroup.add(rootFace.mesh);
+            rootFace.nodeGroup = rootGroup;
+
+            var queue = [rootFace];
+            // 兼容 ES5 的 Set 简单替代，使用对象键值
+            var visited = {};
+            visited[rootId] = true;
+
+            foldQueue = [];
+
+            while (queue.length > 0) {
+                var current = queue.shift();
+
+                for (var i = 0; i < faceNodes.length; i++) {
+                    var neighbor = faceNodes[i];
+                    if (visited[neighbor.id]) continue;
+
+                    var dx = neighbor.gridX - current.gridX;
+                    var dy = neighbor.gridY - current.gridY;
+
+                    if (Math.abs(dx) + Math.abs(dy) === 1) {
+                        visited[neighbor.id] = true;
+                        queue.push(neighbor);
+
+                        var childGroup = new THREE.Group();
+                        var half = BOX_SIZE / 2;
+
+                        // 核心修复：基于父级 Mesh 的局部坐标累加
+                        var pivotX = current.mesh.position.x + (dx * half);
+                        var pivotZ = current.mesh.position.z + (dy * half);
+
+                        childGroup.position.set(pivotX, 0, pivotZ);
+                        current.nodeGroup.add(childGroup);
+
+                        neighbor.mesh.position.set(dx * half, 0, dy * half);
+                        neighbor.mesh.rotation.set(-Math.PI / 2, 0, 0);
+
+                        childGroup.add(neighbor.mesh);
+                        neighbor.nodeGroup = childGroup;
+
+                        var axis = (dx !== 0) ? 'z' : 'x';
+                        var target = 0;
+                        if (dx === 1) target = Math.PI / 2;
+                        else if (dx === -1) target = -Math.PI / 2;
+                        else if (dy === 1) target = -Math.PI / 2;
+                        else if (dy === -1) target = Math.PI / 2;
+
+                        foldQueue.push({ group: childGroup, axis: axis, target: target, faceId: neighbor.id });
+                    }
+                }
+            }
+        }
+
+        // ================= 交互 =================
+
+        // 统一的点击/触摸处理函数
+        function handleInteraction(e, isTouch) {
+            // 如果正在动画中，不允许新的交互
+            if (isAnimating) return;
+
+            // 兼容旧浏览器的事件对象
+            e = e || window.event;
+            var target = e.target || e.srcElement;
+
+            // 使用兼容的 closest 方法
+            if (closestElement(target, '#panel')) return;
+
+            // 获取坐标：优先使用触摸坐标，然后是鼠标坐标
+            var clientX, clientY;
+            if (isTouch) {
+                // 触摸事件：使用 changedTouches（touchend 时 touches 可能为空）
+                var touch = e.changedTouches && e.changedTouches[0] ? e.changedTouches[0] :
+                    (e.touches && e.touches[0] ? e.touches[0] : null);
+                if (!touch) return;
+                clientX = touch.clientX;
+                clientY = touch.clientY;
+            } else {
+                // 鼠标事件
+                clientX = e.clientX || 0;
+                clientY = e.clientY || 0;
+            }
+
+            mouse.x = (clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+
+            var meshes = [];
+            for (var i = 0; i < faceNodes.length; i++) meshes.push(faceNodes[i].mesh);
+
+            var hits = raycaster.intersectObjects(meshes);
+
+            if (hits.length) {
+                var clickedFaceId = hits[0].object.userData.id;
+
+                // 如果还没有选中底，则选择底
+                if (baseFaceId === -1) {
+                    selectBase(clickedFaceId);
+                } else {
+                    // 如果已经选中了底，点击其他面进行折叠
+                    // 不能点击底本身，也不能点击已经折叠过的面
+                    if (clickedFaceId !== baseFaceId && !foldedFaces[clickedFaceId]) {
+                        foldFace(clickedFaceId);
+                    }
+                }
+            }
+        }
+
+        function onClick(e) {
+            handleInteraction(e, false);
+        }
+
+        function onTouchStart(e) {
+            // 记录触摸开始位置
+            var touch = e.touches && e.touches[0] ? e.touches[0] : null;
+            if (touch && e.touches.length === 1) {
+                touchStartPos = { x: touch.clientX, y: touch.clientY };
+            } else {
+                touchStartPos = null; // 多点触摸，不记录
+            }
+            preventDefault(e);
+        }
+
+        function onTouchEnd(e) {
+            // 只有在单点触摸时才触发选择（多点触摸用于缩放/旋转）
+            var touches = e.changedTouches || (e.touches ? e.touches : []);
+            if (touches.length !== 1) {
+                touchStartPos = null;
+                return; // 多点触摸，不处理
+            }
+
+            var touch = touches[0];
+            var moved = false;
+
+            // 检查触摸是否移动（如果移动距离超过10px，认为是手势操作，不触发选择）
+            if (touchStartPos) {
+                var dx = touch.clientX - touchStartPos.x;
+                var dy = touch.clientY - touchStartPos.y;
+                var distance = Math.sqrt(dx * dx + dy * dy);
+                if (distance > 10) {
+                    moved = true;
+                }
+            }
+
+            touchStartPos = null;
+
+            // 如果触摸移动了，不触发选择（让 OrbitControls 处理）
+            if (moved) {
+                return;
+            }
+
+            // 防止触发点击事件（避免双击）
+            e.preventDefault();
+            handleInteraction(e, true);
+        }
+
+        function selectBase(id) {
+            loadShape(currentShapeIndex);
+            baseFaceId = id;
+
+            for (var i = 0; i < faceNodes.length; i++) {
+                var n = faceNodes[i];
+                var isBase = (n.id === id);
+                // 修改文案："底" -> "下"
+                updateCanvas(n.ctx, isBase ? "下" : "", isBase);
+                n.texture.needsUpdate = true;
+            }
+
+            buildHierarchy(id);
+            updateUI('ready');
+        }
+
+        // 折叠指定面的函数
+        function foldFace(faceId) {
+            // 在 foldQueue 中找到对应的折叠步骤
+            var stepIndex = -1;
+            for (var i = 0; i < foldQueue.length; i++) {
+                if (foldQueue[i].faceId === faceId) {
+                    stepIndex = i;
+                    break;
+                }
+            }
+
+            if (stepIndex === -1) return; // 找不到对应的折叠步骤
+
+            // 检查该面是否已经被折叠
+            if (foldedFaces[faceId]) return;
+
+            // 检查该面是否正在动画中
+            if (animatingFaces[faceId]) return;
+
+            // 标记该面正在动画中
+            animatingFaces[faceId] = true;
+            isAnimating = true;
+
+            // 标记该面已折叠
+            foldedFaces[faceId] = true;
+
+            // 执行折叠动画
+            animateFold(foldQueue[stepIndex], false, function () {
+                // 清除动画标记
+                animatingFaces[faceId] = false;
+
+                // 检查是否还有正在动画的面
+                var hasAnimating = false;
+                for (var key in animatingFaces) {
+                    if (animatingFaces.hasOwnProperty(key) && animatingFaces[key]) {
+                        hasAnimating = true;
+                        break;
+                    }
+                }
+                isAnimating = hasAnimating;
+
+                // 检查是否所有面都已折叠
+                var allFolded = true;
+                for (var i = 0; i < faceNodes.length; i++) {
+                    if (faceNodes[i].id !== baseFaceId && !foldedFaces[faceNodes[i].id]) {
+                        allFolded = false;
+                        break;
+                    }
+                }
+
+                if (allFolded) {
+                    setTimeout(function () { updateUI('finish'); }, 600);
+                } else {
+                    updateUI('ready');
+                }
+            });
+        }
+
+        btnUnfold.onclick = function () {
+            if (isAnimating) return;
+            stepText.innerText = "还原则...";
+
+            // 获取所有已折叠的面，按折叠顺序反向还原
+            var foldedList = [];
+            for (var i = 0; i < foldQueue.length; i++) {
+                if (foldedFaces[foldQueue[i].faceId]) {
+                    foldedList.push(i);
+                }
+            }
+
+            function runBack(listIdx) {
+                if (listIdx < 0) {
+                    foldStepIndex = 0;
+                    foldedFaces = {}; // 重置已折叠面的记录
+                    animatingFaces = {}; // 重置动画中的面记录
+                    labelShownFaces = {}; // 重置已显示文字的面记录
+                    isAnimating = false; // 重置动画状态
+                    updateUI('ready');
+                    return;
+                }
+                var stepIdx = foldedList[listIdx];
+                var faceId = foldQueue[stepIdx].faceId;
+                foldedFaces[faceId] = false; // 取消标记
+                animatingFaces[faceId] = true; // 标记正在动画
+                isAnimating = true;
+                animateFold(foldQueue[stepIdx], true, function () {
+                    animatingFaces[faceId] = false; // 清除动画标记
+                    // 检查是否还有正在动画的面
+                    var hasAnimating = false;
+                    for (var key in animatingFaces) {
+                        if (animatingFaces.hasOwnProperty(key) && animatingFaces[key]) {
+                            hasAnimating = true;
+                            break;
+                        }
+                    }
+                    isAnimating = hasAnimating;
+                    runBack(listIdx - 1);
+                });
+            }
+            runBack(foldedList.length - 1);
+        };
+
+        btnReset.onclick = function () {
+            loadShape(shapeSelect.value);
+        };
+
+        shapeSelect.onchange = function () {
+            loadShape(shapeSelect.value);
+        };
+
+        // 改错按钮：将1-1-4型错误案例修正为(3,3)的1-4-1型
+        btnFixError.onclick = function () {
+            // 保存当前相机位置和朝向
+            var savedPosition = new THREE.Vector3();
+            savedPosition.copy(camera.position);
+            var savedTarget = new THREE.Vector3();
+            savedTarget.copy(controls.target);
+            
+            // 切换到(3,3)的1-4-1型（索引23）
+            // 注意：索引23不在选项列表中，所以直接调用loadShape
+            loadShape(23);
+            
+            // 恢复相机位置和朝向
+            camera.position.copy(savedPosition);
+            controls.target.copy(savedTarget);
+            controls.update();
+            
+            // 隐藏改错按钮（因为已经不是错误案例了）
+            btnFixError.style.display = 'none';
+            
+            showToast('已修正为正确的1-4-1型（上4下4）');
+        };
+
+        // 检查所有已折叠但未显示文字的面，看是否到达了正确位置
+        function checkAllFoldedFaces() {
+            for (var i = 0; i < faceNodes.length; i++) {
+                var faceId = faceNodes[i].id;
+                // 跳过底面和未折叠的面
+                if (faceId === baseFaceId || !foldedFaces[faceId]) continue;
+                // 跳过已经显示文字的面
+                if (labelShownFaces[faceId]) continue;
+
+                // 检测这个面是否到达了正确位置（identifyPosition 内部会设置 labelShownFaces）
+                identifyPosition(faceId);
+            }
+        }
+
+        function animateFold(step, reverse, cb) {
+            if (!reverse) updateUI('animating');
+
+            // 还原时不清除文字
+
+            var p = 0;
+            var start = reverse ? step.target : 0;
+            var end = reverse ? 0 : step.target;
+            var speed = 0.08;
+
+            function loop() {
+                p += speed;
+                if (p > 1) p = 1;
+                var ease = 1 - Math.pow(1 - p, 3);
+                var val = start + (end - start) * ease;
+
+                if (step.axis === 'x') step.group.rotation.x = val;
+                else step.group.rotation.z = val;
+
+                // 在动画过程中实时检测所有已折叠但未显示文字的面
+                // 因为当前面的折叠可能会将其他面推到正确位置
+                if (!reverse) {
+                    checkAllFoldedFaces();
+                }
+
+                if (p < 1) {
+                    requestAnimationFrame(loop);
+                } else {
+                    // 动画完成，再次检查所有面（确保没有遗漏）
+                    if (!reverse) {
+                        checkAllFoldedFaces();
+                    }
+                    if (cb) cb();
+                }
+            }
+            loop();
+        }
+
+        // 清除面的文字标签
+        function clearFaceLabel(id) {
+            updateCanvas(faceNodes[id].ctx, "", false);
+            faceNodes[id].texture.needsUpdate = true;
+        }
+
+        function identifyPosition(id) {
+            // 如果已经显示过文字，不再重复检测
+            if (labelShownFaces[id]) {
+                return null;
+            }
+
+            // 获取底面的世界位置（底面位置固定，不会改变）
+            var baseMesh = faceNodes[baseFaceId].mesh;
+            var basePos = new THREE.Vector3();
+            baseMesh.getWorldPosition(basePos);
+
+            // 获取当前面的世界位置
+            var mesh = faceNodes[id].mesh;
+            var facePos = new THREE.Vector3();
+            mesh.getWorldPosition(facePos);
+
+            // 计算相对于底面的位置
+            var relativePos = new THREE.Vector3();
+            relativePos.subVectors(facePos, basePos);
+
+            var label = "";
+            var eps = 0.6; // 主要坐标的容差
+            var epsOther = 1.2; // 其他坐标的容差，更宽松
+
+            // 基于底面的位置判断其他面的位置
+            // 底面是水平放置的（rotation.x = -Math.PI/2），在 y=0 的位置
+
+            // 先判断垂直方向（上）：在底面的正上方
+            // y 坐标应该是 BOX_SIZE，x 和 z 应该接近 0
+            if (Math.abs(relativePos.y - BOX_SIZE) < eps && Math.abs(relativePos.x) < epsOther && Math.abs(relativePos.z) < epsOther) {
+                label = "上";
+            }
+            // 判断前：在底面的前方（z轴正方向）
+            // z 坐标应该是 BOX_SIZE，x 应该接近 0，y 应该和底面相同（接近0）
+            else if (Math.abs(relativePos.z - BOX_SIZE) < eps && Math.abs(relativePos.x) < epsOther && Math.abs(relativePos.y) < epsOther) {
+                label = "前";
+            }
+            // 判断后：在底面的后方（z轴负方向）
+            // z 坐标应该是 -BOX_SIZE，x 应该接近 0，y 应该和底面相同（接近0）
+            else if (Math.abs(relativePos.z + BOX_SIZE) < eps && Math.abs(relativePos.x) < epsOther && Math.abs(relativePos.y) < epsOther) {
+                label = "后";
+            }
+            // 判断右：在底面的右侧（x轴正方向）
+            // x 坐标应该是 BOX_SIZE，z 应该接近 0，y 应该和底面相同（接近0）
+            else if (Math.abs(relativePos.x - BOX_SIZE) < eps && Math.abs(relativePos.z) < epsOther && Math.abs(relativePos.y) < epsOther) {
+                label = "右";
+            }
+            // 判断左：在底面的左侧（x轴负方向）
+            // x 坐标应该是 -BOX_SIZE，z 应该接近 0，y 应该和底面相同（接近0）
+            else if (Math.abs(relativePos.x + BOX_SIZE) < eps && Math.abs(relativePos.z) < epsOther && Math.abs(relativePos.y) < epsOther) {
+                label = "左";
+            }
+
+            // 只有当找到明确的位置标签时才显示
+            if (label) {
+                // 先清除可能存在的旧文字
+                clearFaceLabel(id);
+                // 再显示新文字
+                updateCanvas(faceNodes[id].ctx, label, false);
+                faceNodes[id].texture.needsUpdate = true;
+                labelShownFaces[id] = true; // 标记已显示文字
+            }
+
+            return label; // 返回标签，用于判断是否已显示
+        }
+
+        function updateUI(state) {
+            if (state === 'select') {
+                btnUnfold.disabled = true; shapeSelect.disabled = false;
+                stepText.innerHTML = "请在右侧图形中<br><span class='highlight-text'>点击一个面作为“下”</span>";
+            } else if (state === 'ready') {
+                btnUnfold.disabled = true; shapeSelect.disabled = true;
+                // 计算已折叠的面数
+                var foldedCount = 0;
+                for (var key in foldedFaces) {
+                    if (foldedFaces.hasOwnProperty(key)) foldedCount++;
+                }
+                var totalFaces = faceNodes.length - 1; // 减去底面
+                stepText.innerHTML = "点击其他面进行折叠<br><span class='highlight-text'>已折叠: " + foldedCount + " / " + totalFaces + "</span>";
+            } else if (state === 'finish') {
+                btnUnfold.disabled = false;
+                stepText.innerText = "折叠完成！点击还原可复位";
+            } else if (state === 'animating') {
+                btnUnfold.disabled = true;
+            }
+        }
+
+        function onResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+
+</html>
